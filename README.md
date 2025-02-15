@@ -1,99 +1,202 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# @iamnd/nest-rmq
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+A NestJS module for RabbitMQ integration that provides easy-to-use abstractions for Direct, Fanout, and Topic exchanges.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://coveralls.io/github/nestjs/nest?branch=master" target="_blank"><img src="https://coveralls.io/repos/github/nestjs/nest/badge.svg?branch=master#9" alt="Coverage" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
-
-## Description
-
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
+## Installation
 
 ```bash
-$ npm install
+npm install @iamnd/nest-rmq
 ```
 
-## Compile and run the project
+## Features
 
-```bash
-# development
-$ npm run start
+- 🚀 Easy integration with NestJS applications
+- 🔄 Support for Direct, Fanout, and Topic exchanges
+- 🛡️ Built-in connection management and error handling
+- 📨 Simple publish/subscribe patterns
+- 🔌 Automatic reconnection handling
+- 📝 TypeScript support
 
-# watch mode
-$ npm run start:dev
+## Quick Start
 
-# production mode
-$ npm run start:prod
+### 1. Import RabbitMQModule
+
+```typescript
+// app.module.ts
+import { RabbitMQModule } from '@iamnd/nest-rmq';
+
+@Module({
+  imports: [
+    RabbitMQModule.forRoot({
+      uri: 'amqp://localhost:5672',
+    }),
+  ],
+})
+export class AppModule {}
 ```
 
-## Run tests
+### 2. Publishing Messages
 
-```bash
-# unit tests
-$ npm run test
+```typescript
+// publisher.service.ts
+import { Injectable } from '@nestjs/common';
+import { RabbitMQService, ExchangeType } from '@iamnd/nest-rmq';
 
-# e2e tests
-$ npm run test:e2e
+@Injectable()
+export class PublisherService {
+  private readonly exchangeName = 'orders';
 
-# test coverage
-$ npm run test:cov
+  constructor(private readonly rabbitMQService: RabbitMQService) {
+    this.initialize();
+  }
+
+  private async initialize() {
+    await this.rabbitMQService.createExchange(
+      this.exchangeName,
+      ExchangeType.DIRECT
+    );
+  }
+
+  async publishOrder(order: any) {
+    await this.rabbitMQService.publish(
+      this.exchangeName,
+      'order.created',
+      order
+    );
+  }
+}
 ```
 
-## Deployment
+### 3. Subscribing to Messages
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+```typescript
+// subscriber.service.ts
+import { Injectable, OnModuleInit } from '@nestjs/common';
+import { RabbitMQService, ExchangeType } from '@iamnd/nest-rmq';
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+@Injectable()
+export class SubscriberService implements OnModuleInit {
+  private readonly exchangeName = 'orders';
+  private readonly queueName = 'order-processing';
 
-```bash
-$ npm install -g mau
-$ mau deploy
+  constructor(private readonly rabbitMQService: RabbitMQService) {}
+
+  async onModuleInit() {
+    // Create queue
+    await this.rabbitMQService.createQueue(this.queueName);
+
+    // Bind queue to exchange
+    await this.rabbitMQService.bindQueue(
+      this.queueName,
+      this.exchangeName,
+      'order.created'
+    );
+
+    // Subscribe to messages
+    await this.rabbitMQService.subscribe(
+      this.queueName,
+      this.handleOrder.bind(this)
+    );
+  }
+
+  private async handleOrder(message: any) {
+    console.log('Received order:', message);
+    // Process the order
+  }
+}
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+## Exchange Types
 
-## Resources
+### Direct Exchange
 
-Check out a few resources that may come in handy when working with NestJS:
+```typescript
+// Direct exchange for point-to-point communication
+await rabbitMQService.createExchange('orders', ExchangeType.DIRECT);
+```
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+### Fanout Exchange
 
-## Support
+```typescript
+// Fanout exchange for broadcasting messages to all bound queues
+await rabbitMQService.createExchange('notifications', ExchangeType.FANOUT);
+```
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+### Topic Exchange
 
-## Stay in touch
+```typescript
+// Topic exchange for pattern-based routing
+await rabbitMQService.createExchange('events', ExchangeType.TOPIC);
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+// Subscribe to specific patterns
+await rabbitMQService.bindQueue(
+  'audit-queue',
+  'events',
+  'order.*.success'  // Matches: order.create.success, order.update.success, etc.
+);
+```
+
+## Configuration
+
+The module accepts the following configuration options:
+
+```typescript
+RabbitMQModule.forRoot({
+  uri: 'amqp://localhost:5672', // RabbitMQ connection URI
+  // Additional options can be added here
+});
+```
+
+## Error Handling
+
+The module includes built-in error handling and connection management:
+
+- Automatic reconnection on connection loss
+- Message acknowledgment handling
+- Error logging with NestJS Logger
+- Connection event handling
+
+Example error handling in subscribers:
+
+```typescript
+await this.rabbitMQService.subscribe(
+  queueName,
+  async (message) => {
+    try {
+      await this.processMessage(message);
+      // Message is automatically acknowledged on success
+    } catch (error) {
+      // Message is automatically nack'd on error
+      console.error('Error processing message:', error);
+    }
+  }
+);
+```
+
+## Best Practices
+
+1. Create exchanges in publishers, not subscribers
+2. Use meaningful exchange and queue names
+3. Implement proper error handling
+4. Use TypeScript interfaces for message types
+5. Follow the single responsibility principle
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+MIT
+
+## Author
+
+ND
+
+## Support
+
+For issues and feature requests, please create an issue on GitHub.
+
+---
+
+Made with ❤️ for the NestJS community.
